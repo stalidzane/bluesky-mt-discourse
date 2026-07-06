@@ -18,60 +18,64 @@ about it.
    MT's effect on their careers, compared to the general public?
 3. Utility vs. displacement — do people acknowledge MT's usefulness while
    also lamenting professional erosion?
+4. Network structure — do professional translators and general users form
+   distinct communities in the follow/reply networks, and which accounts
+   bridge them?
 
 ## Repo structure
 
 ```
-notebook.ipynb            Data collection (Bluesky/atproto API) + preprocessing
-analysis.ipynb            Network analysis: centrality, community detection, visualizations
-content_analysis.ipynb    Content analysis: sentiment, emotion, NER, visualizations
+01_data_collection.ipynb  Data collection (Bluesky/atproto API, Colab) + preprocessing
+02_network_analysis.ipynb Network analysis: centrality, community detection, visualizations
+03_content_analysis.ipynb Content analysis: sentiment, emotion, NER, visualizations
 data/                     Collected/derived CSVs and generated plots (see below)
 docs/                     Course material (gitignored, not part of the deliverable)
 ```
 
-Run order: `notebook.ipynb` first (collects and cleans the data, saves the
-CSVs in `data/`), then `analysis.ipynb` and `content_analysis.ipynb`
-independently (both just load the saved CSVs).
+Run order: `01_data_collection.ipynb` first (Colab only — collects and
+cleans the data, saves the CSVs to Drive), then `02_network_analysis.ipynb`
+and `03_content_analysis.ipynb` independently (both just load the saved
+CSVs from `data/`, no API access needed).
 
 ## Data
 
 - `data/seeds.csv`, `posts_raw.csv`, `posts_clean.csv` — collected posts at
   each pipeline stage (raw API responses → cleaned/filtered/labeled).
-- `data/author_profiles.csv` — author metadata, bio, `user_type` label.
+- `data/author_profiles.csv` — author metadata, bio, `user_type` label
+  (`general` / `professional` / `tech` / `unknown` — `unknown` means a
+  profile was fetched but had no bio text, kept separate from `general` so
+  "no information" isn't silently treated as "ordinary user").
 - `data/follow_edges.csv`, `graph.csv`, `reply_edges.csv` — network edges
-  (follow + reply relationships) used for the network analysis.
-- `data/posts_content_analysis.csv` — output of `content_analysis.ipynb`:
+  (follow + reply relationships) used for the network analysis. Reply
+  edges are derived from each post's `reply_to` field during
+  preprocessing (not collected at crawl time), which is idempotent —
+  re-running preprocessing cannot corrupt `graph.csv`.
+- `data/posts_content_analysis.csv` — output of `03_content_analysis.ipynb`:
   posts enriched with sentiment (VADER + RoBERTa), emotion (NRCLex +
   DistilRoBERTa), and extracted entities.
-- `data/*.png` — all visualizations, saved by both notebooks.
+- `data/*.png` — all visualizations, saved by both analysis notebooks.
 
 ## Setup
 
 ```bash
-pip install pandas atproto python-dotenv networkx matplotlib \
+pip install pandas atproto networkx matplotlib \
             vaderSentiment nrclex spacy wordcloud transformers torch
 python -m spacy download en_core_web_sm
 ```
 
-`notebook.ipynb` needs Bluesky credentials to hit the API — create a `.env`
-file in the project root with:
-
-```
-BSKY_HANDLE=your-handle.bsky.social
-BSKY_PASSWORD=your-app-password
-```
-
-(Only needed to re-run data collection from scratch; `analysis.ipynb` and
-`content_analysis.ipynb` only need the CSVs already in `data/` and don't
-touch the API.)
+`01_data_collection.ipynb` runs in Google Colab and needs Bluesky
+credentials as Colab secrets (`BSKY_HANDLE`, `BSKY_PASSWORD`) and a mounted
+Drive — see the notebook's Setup section. `02_network_analysis.ipynb` and
+`03_content_analysis.ipynb` only need the CSVs already in `data/` and run
+anywhere (no Colab, no API access).
 
 ## Models used
 
-**Network analysis** (`analysis.ipynb`): degree/betweenness/closeness
+**Network analysis** (`02_network_analysis.ipynb`): degree/betweenness/closeness
 centrality; community detection via Louvain, Greedy Modularity, FluidC, and
 Girvan-Newman (compared by modularity).
 
-**Content analysis** (`content_analysis.ipynb`), each with two independent
+**Content analysis** (`03_content_analysis.ipynb`), each with two independent
 methods compared against each other rather than taken at face value:
 - Sentiment: VADER (lexicon-based) vs. `cardiffnlp/twitter-roberta-base-sentiment`
   (transformer).
@@ -82,5 +86,14 @@ methods compared against each other rather than taken at face value:
 The dual-method comparisons are a deliberate part of the analysis, not
 redundant work: they surface real weaknesses in the lexicon-based tools
 (e.g. NRCLex's dominant-emotion output is close to invariant to actual
-content — see `content_analysis.ipynb` for details) that a single-method
+content — see `03_content_analysis.ipynb` for details) that a single-method
 analysis would have taken at face value.
+
+## Collection limitations
+
+Documented in full in `01_data_collection.ipynb`'s final section: ego-network
+sample (follow edges only exist around authors with ≥ 2 posts), a 100-follower
+cap per author, followers-not-following direction, a multilingual corpus
+(keyword-filtered, not language-filtered), handles used as node IDs (DIDs
+stored as a fallback), and collection ethics (public data only, polite
+request rates, official API).
